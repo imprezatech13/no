@@ -1,0 +1,43 @@
+name: Build ROBLOX 2013 for 3DS
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: devkitpro/devkitarm:latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build .3dsx (Homebrew Launcher)
+        run: make
+
+      - name: Install CIA tools (makerom + bannertool)
+        id: tools
+        continue-on-error: true
+        run: |
+          apt-get update
+          apt-get install -y build-essential cmake git zlib1g-dev
+          git clone --depth 1 https://github.com/3DSGuy/Project_CTR.git /tmp/ctr
+          make -C /tmp/ctr/makerom deps -j$(nproc)
+          make -C /tmp/ctr/makerom -j$(nproc)
+          install -m755 "$(find /tmp/ctr/makerom -type f -name makerom -perm -u+x | head -n1)" /usr/local/bin/makerom
+          git clone --recursive --depth 1 https://github.com/carstene1ns/3ds-bannertool.git /tmp/bt
+          cmake -S /tmp/bt -B /tmp/bt/build
+          cmake --build /tmp/bt/build -j$(nproc)
+          install -m755 "$(find /tmp/bt/build -type f -name bannertool | head -n1)" /usr/local/bin/bannertool
+
+      - name: Build .cia
+        if: steps.tools.outcome == 'success'
+        continue-on-error: true
+        run: make cia
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: roblox2013-3ds
+          path: |
+            roblox2013.cia
+            roblox2013.3dsx
+          if-no-files-found: warn
